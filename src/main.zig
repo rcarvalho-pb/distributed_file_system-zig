@@ -2,8 +2,9 @@ const std = @import("std");
 const print = std.debug.print;
 const heap = std.heap;
 
-const GenericQueue = @import("p2p/message_queue.zig").GenericQueue;
-const TcpTransport = @import("p2p/tcp_transport.zig");
+const GenericQueue = @import("genericQueue").GenericQueue;
+const p2p = @import("p2p");
+const TcpTransport = p2p.TcpTransport;
 
 pub fn main() !void {
     var gpa = heap.GeneralPurposeAllocator(.{}){};

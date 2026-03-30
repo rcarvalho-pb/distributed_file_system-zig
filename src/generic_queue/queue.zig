@@ -70,3 +70,10 @@ pub fn GenericQueue(comptime T: type) type {
         }
     };
 }
+
+test "Create a queue" {
+    const allocator = std.testing.allocator;
+    var queue = try GenericQueue(i32).init(allocator);
+    defer queue.deinit();
+    try std.testing.expectEqual(@as(usize, 0), queue.len());
+}
