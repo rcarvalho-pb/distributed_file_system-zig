@@ -7,9 +7,11 @@ const Allocator = std.mem.Allocator;
 pub fn GenericQueue(comptime T: type) type {
     return struct {
         mutex: Mutex = .{},
-        cond: Condition = .{},
+        cond_empty: Condition = .{},
+        cond_full: Condition = .{},
         fifo: std.DoublyLinkedList = .{},
         allocator: Allocator,
+        maxItems: u32 = 10,
         count: u32 = 0,
 
         const Self = @This();
@@ -40,18 +42,20 @@ pub fn GenericQueue(comptime T: type) type {
             self.mutex.lock();
             defer self.mutex.unlock();
 
+            while (self.count == @as(u32, self.maxItems)) self.cond_full.wait(&self.mutex);
+
             const node_ptr = try self.allocator.create(FifoData);
             node_ptr.* = .{ .value = value };
             self.count += 1;
             self.fifo.append(&node_ptr.node);
+            self.cond_empty.signal();
         }
 
         pub fn dequeue(self: *Self) !?T {
-            if (self.count == 0) {
-                return error.EmptyQueue;
-            }
             self.mutex.lock();
             defer self.mutex.unlock();
+
+            while (self.count == 0) self.cond_empty.wait(&self.mutex);
 
             const node_ptr = self.fifo.popFirst();
             if (node_ptr) |node| {
@@ -59,6 +63,7 @@ pub fn GenericQueue(comptime T: type) type {
                 const value = fifoData.value;
                 self.allocator.destroy(fifoData);
                 self.count -= 1;
+                self.cond_full.signal();
                 return value;
             } else {
                 return null;
@@ -76,4 +81,9 @@ test "Create a queue" {
     var queue = try GenericQueue(i32).init(allocator);
     defer queue.deinit();
     try std.testing.expectEqual(@as(usize, 0), queue.len());
+}
+
+test "Push and pop to queue" {
+    const allocator = std.testing.allocator;
+    var queue = try GenericQueue(i32).init(allocator);
 }
