@@ -5,8 +5,13 @@ pub fn build(b: *std.Build) void {
 
     const optimize = b.standardOptimizeOption(.{});
 
-    const queue_mod = b.addModule("genericQueue", .{
-        .root_source_file = b.path("src/generic_queue/queue.zig"),
+    const channel_mod = b.addModule("channel", .{
+        .root_source_file = b.path("src/channel/channel.zig"),
+        .target = target,
+    });
+
+    const queue_mod = b.addModule("queue", .{
+        .root_source_file = b.path("src/queue/queue.zig"),
         .target = target,
     });
 
@@ -14,7 +19,8 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/p2p/p2p.zig"),
         .target = target,
         .imports = &.{
-            .{ .name = "genericQueue", .module = queue_mod },
+            .{ .name = "queue", .module = queue_mod },
+            .{ .name = "channel", .module = channel_mod },
         },
     });
 
@@ -27,7 +33,8 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
 
             .imports = &.{
-                .{ .name = "genericQueue", .module = queue_mod },
+                .{ .name = "channel", .module = channel_mod },
+                .{ .name = "queue", .module = queue_mod },
                 .{ .name = "p2p", .module = p2p_mod },
             },
         }),
@@ -48,6 +55,7 @@ pub fn build(b: *std.Build) void {
         b.addTest(.{ .root_module = exe.root_module }),
         b.addTest(.{ .root_module = queue_mod }),
         b.addTest(.{ .root_module = p2p_mod }),
+        b.addTest(.{ .root_module = channel_mod }),
     };
 
     for (tests) |t| {

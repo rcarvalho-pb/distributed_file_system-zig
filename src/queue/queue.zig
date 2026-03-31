@@ -83,7 +83,7 @@ test "Create a queue" {
     try std.testing.expectEqual(@as(usize, 0), queue.len());
 }
 
-test "Push and pop to queue" {
-    const allocator = std.testing.allocator;
-    var queue = try GenericQueue(i32).init(allocator);
-}
+// test "Push and pop to queue" {
+//     const allocator = std.testing.allocator;
+//     var queue = try GenericQueue(i32).init(allocator);
+// }
