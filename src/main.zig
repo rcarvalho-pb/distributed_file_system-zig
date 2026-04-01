@@ -2,7 +2,7 @@ const std = @import("std");
 const print = std.debug.print;
 const heap = std.heap;
 
-const GenericQueue = @import("genericQueue").GenericQueue;
+const GenericQueue = @import("queue").GenericQueue;
 const p2p = @import("p2p");
 const TcpTransport = p2p.TcpTransport;
 

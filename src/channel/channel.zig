@@ -22,23 +22,18 @@ pub fn Channel(comptime T: type, comptime size: usize) type {
         }
 
         pub fn deinit(self: *Self, allocator: Allocator) void {
-            while (self.head != self.tail) : (self.walk_head()) {
-                allocator.destroy(self.buf[self.head]);
+            while (self.count > 0) {
+                _ = self.receive(allocator);
             }
-
             allocator.destroy(self);
         }
 
         fn walk_buf(self: *Self, func: *const fn (*T) void) void {
-            const initial = self.head;
-            std.debug.print("head: {d}\n", .{self.head});
-            while (self.head != self.tail) : (self.walk_head()) {
-                std.debug.print("head: {d}\n", .{self.head});
-                func(self.buf[self.head]);
+            var i = self.head;
+            while (i < self.count) : (i += 1) {
+                const pos = (self.head + i) % size;
+                func(self.buf[pos]);
             }
-            std.debug.print("head: {d}\n", .{self.head});
-            self.head = initial;
-            std.debug.print("head: {d}\n", .{self.head});
         }
 
         fn walk_head(self: *Self) void {
@@ -65,7 +60,7 @@ pub fn Channel(comptime T: type, comptime size: usize) type {
             self.cond_empty.signal();
         }
 
-        pub fn receive(self: *Self, allocator: Allocator) *T {
+        pub fn receive(self: *Self, allocator: Allocator) T {
             self.mutex.lock();
             defer self.mutex.unlock();
 
