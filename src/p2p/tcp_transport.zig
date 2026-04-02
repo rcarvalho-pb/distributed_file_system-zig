@@ -6,21 +6,39 @@ const Reader = std.Io.Reader;
 
 const Transport = @import("transport.zig").Transport;
 const RPC = @import("rpc.zig");
+const TCPPeer = @import("tcp_peer.zig");
 const Peer = @import("transport.zig").Peer;
 
-address: []const u8,
-// handshakeFunc: *const fn (Peer) anyerror,
-// decodeFunc: *const fn (Reader, *RPC) anyerror,
+const Channel = @import("channel").Channel;
+
+pub const HandshakeFunc: type = *const fn (Peer) anyerror!void;
+pub const DecodeFunc = *const fn (std.Io.Reader, *RPC) anyerror!void;
+pub const OnPeerFunc = *const fn (Peer) anyerror!void;
+
+const TYPE: type = RPC;
+const SIZE: usize = 1;
+
+opts: TCPOprtions,
+rpc_chan: *Channel(TYPE, SIZE),
+listener: ?std.net.Server = null,
 allocator: Allocator,
 interface: Transport,
 
 const Self = @This();
 
-pub fn init(allocator: Allocator, address: []const u8) !*Self {
+pub const TCPOprtions = struct {
+    listenAddr: []const u8,
+    handshake: HandshakeFunc,
+    decode: DecodeFunc,
+    onPeer: ?OnPeerFunc = null,
+};
+
+pub fn init(allocator: Allocator, opts: TCPOprtions) !*Self {
     const self = try allocator.create(Self);
     self.* = .{
-        .address = address,
         .allocator = allocator,
+        .opts = opts,
+        .chan = try Channel(TYPE, SIZE).init(allocator),
         .interface = initInterface(self),
     };
     return self;
@@ -30,25 +48,68 @@ fn initInterface(self: *Self) Transport {
     return .{
         .ptr = self,
         .vtable = &.{
-            .listenAndAccept = listenAndAccept,
-            .consume = consume,
-            .deinit = deinit,
+            .listenAndAccept = struct {
+                fn wrapper(ctx: *anyopaque) anyerror!void {
+                    const s: *Self = @ptrCast(@alignCast(ctx));
+                    return s.listenAndAccept();
+                }
+            }.wrapper,
+            .consume = struct {
+                fn wrapper(ctx: *anyopaque) anyerror!RPC {
+                    const s: *Self = @ptrCast(@alignCast(ctx));
+                    return s.consume();
+                }
+            }.wrapper,
+            .deinit = struct {
+                fn wrapper(ctx: *anyopaque) void {
+                    const s: *Self = @ptrCast(@alignCast(ctx));
+                    return s.deinit();
+                }
+            }.wrapper,
         },
     };
 }
 
-fn listenAndAccept(ctx: *anyopaque) anyerror!void {
-    const self: *Self = @ptrCast(@alignCast(ctx));
-    print("Escutando TCP em {s}...\n", .{self.address});
+fn listenAndAccept(self: *Self) anyerror!void {
+    const address = try std.net.Address.parseIp4(self.opts.listenAddr, 0);
+    self.listener = try address.listen(.{ .reuse_address = true });
+
+    const thread = try std.Thread.spawn(.{}, startAcceptLoop, .{self});
+    thread.detach();
 }
 
-fn consume(ctx: *anyopaque) anyerror!RPC {
-    _ = ctx;
-    return RPC{ .from = "server", .payload = "ping" };
+fn startAcceptLoop(self: *Self) void {
+    if (self.listener) |*s| {
+        while (true) {
+            const conn = s.accept() catch |err| {
+                print("TCP accept error: {any}\n", .{err});
+                return;
+            };
+            const thread = std.Thread.spawn(.{}, handleConn, .{self}) catch |err| {
+                print("error accepting conn: {any}\n", .{err});
+                return;
+            };
+            thread.detach();
+        }
+    } else {
+        return;
+    }
 }
 
-fn deinit(ctx: *anyopaque) void {
-    const self: *Self = @ptrCast(@alignCast(ctx));
+pub fn handleConn(self: *Self, conn: std.net.Server.Connection) void {
+    var success: bool = false;
+    defer if (!success) conn.stream.close();
+
+    const peer = TCPPeer{ .conn = conn, .outbound = true };
+}
+
+fn consume(self: *Self) anyerror!RPC {
+    return self.rpc_chan.receive(self.allocator);
+}
+
+fn deinit(self: *Self) void {
     const allocator = self.allocator;
+    if (self.listener) |*s| s.deinit();
+    self.rpc_chan.deinit(allocator);
     allocator.destroy(self);
 }

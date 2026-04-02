@@ -94,7 +94,7 @@ test "Create channel" {
     try std.testing.expectEqual(size, chan.buf.len);
 }
 
-test "Send to channel" {
+test "Send to channel and receive from it" {
     const size: usize = 5;
     const allocator = std.testing.allocator;
 
@@ -112,9 +112,8 @@ test "Send to channel" {
     try chan.send(allocator, @as(i32, 40));
     try chan.send(allocator, @as(i32, 50));
 
-    chan.walk_buf(struct {
-        pub fn print(v: *i32) void {
-            std.debug.print("value: {d}\n", .{v.*});
-        }
-    }.print);
+    try std.testing.expectEqual(@as(i32, 10), chan.receive(allocator));
+    try std.testing.expectEqual(@as(i32, 20), chan.receive(allocator));
+
+    try std.testing.expectEqual(@as(i32, 30), chan.buf[chan.head].*);
 }
