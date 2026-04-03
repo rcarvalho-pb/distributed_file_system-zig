@@ -85,7 +85,7 @@ fn startAcceptLoop(self: *Self) void {
                 print("TCP accept error: {any}\n", .{err});
                 return;
             };
-            const thread = std.Thread.spawn(.{}, handleConn, .{self}) catch |err| {
+            const thread = std.Thread.spawn(.{}, handleConn, .{ self, conn }) catch |err| {
                 print("error accepting conn: {any}\n", .{err});
                 return;
             };
@@ -101,6 +101,27 @@ pub fn handleConn(self: *Self, conn: std.net.Server.Connection) void {
     defer if (!success) conn.stream.close();
 
     const peer = TCPPeer{ .conn = conn, .outbound = true };
+
+    self.opts.handshake(peer) catch return;
+
+    if (self.opts.onPeer) |on_peer| {
+        on_peer(peer) catch return;
+    }
+
+    success = true;
+
+    while (true) {
+        var rpc = RPC{};
+        self.opts.decode(conn.stream, &rpc) catch |err| {
+            if (err != error.EndOfStream) {
+                print("Decoder error: {any}\n", .{err});
+            }
+            conn.stream.close();
+            break;
+        };
+        rpc.from = conn.address;
+        self.rpc_chan.send(self.allocator, rpc) catch break;
+    }
 }
 
 fn consume(self: *Self) anyerror!RPC {
